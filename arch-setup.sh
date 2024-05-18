@@ -2,11 +2,11 @@
 DEVICE="
     sda
 "
-# mount position inside MOUNTPOINT | partition information | encryption setup
+# TODO: disk encryption settings
+# mount position inside MOUNTPOINT | partition information | flags
 PARTITION="
-    /     | primary ext4  1GiB   50%   |     | mkfs.ext4
-    /boot | primary fat32 1MiB   1GiB  | esp | mkfs.vfat -F32
-    /home | primary ext4  50%    100%  |     | mkfs.ext4
+    /     | primary ext4  1GiB   100%  |     | mkfs.ext4 --verbose
+    /boot | primary fat32 1MiB   1GiB  | esp | mkfs.vfat -F32 --verbose
 "
 MOUNTPOINT="
     /mnt/disk
@@ -84,7 +84,7 @@ tell() {
     local PREFIX=""
     for I in $(seq 0 $((${#COLOR[@]}-1)))
     do
-        PREFIX="${PREFIX}${COLOR[$I]}:: ${STAGE[$I]}${STOPCOLOR} "
+        PREFIX="${PREFIX}:: ${COLOR[$I]}${STAGE[$I]}${STOPCOLOR} "
     done
     trim "$@" \
     | sed "s/^/${PREFIX}:: /g" \
@@ -103,7 +103,7 @@ fail() {
     do
         tell ${HOOK[-$I]}
         ${HOOK[-$I]} >& /dev/null || {
-            tell "While executing cleanup hook, '$H' failed. "
+            tell "While executing cleanup hook, '${HOOK[-$I]}' failed. "
         }
     done
     exit 1
@@ -325,7 +325,6 @@ setup-localize() {
 setup-user() {
     add-prefix "USER ADD"
     useradd -m $(trim $1)
-    usermod -aG root $(trim $1)
     passwd $(trim $1) < <(trim "
         $(trim $2)
         $(trim $2)
