@@ -4,22 +4,38 @@ DEVICE="
 "
 # mount position inside MOUNTPOINT | partition information | encryption setup
 PARTITION="
-    /boot | ext4 1MiB   256MiB | mkfs.ext4
-    /     | ext4 256MiB 64GiB  | mkfs.ext4
-    /home | ext4 64GiB  100%   | mkfs.ext4
-"
-USERNAME="
-    random user name
-"
-PASSWORD="
-    bassword or whatever
+    /     | primary ext4  1GiB   50%   |     | mkfs.ext4
+    /boot | primary fat32 1MiB   1GiB  | esp | mkfs.vfat -F32
+    /home | primary ext4  50%    100%  |     | mkfs.ext4
 "
 MOUNTPOINT="
-    /mnt
+    /mnt/disk
+"
+MIRRORLIST='
+    # US
+    # Server = http://mirror.cs.vt.edu/archlinux/$repo/os/$arch
+    # Server = http://www.gtlib.gatech.edu/pub/archlinux/$repo/os/$arch
+    # CN
+    Server = http://mirrors.bfsu.edu.cn/archlinux/$repo/os/$arch
+    # Server = http://mirrors.aliyun.com/archlinux/$repo/os/$arch
+'
+# don't forget to change this to yours!
+USERNAME="
+    y-jiji
+"
+PASSWORD="
+    awesome-archlinux
 "
 PACKAGES="
-    intel-ucode
+    sudo
+    amd-ucode
+    linux
+    linux-firmware
     nvidia
+    nvidia-utils
+    networkmanager
+    gnome
+    pipewire
     ttf-dejavu
     ttf-liberation
 "
@@ -33,12 +49,14 @@ CITY="
     Shanghai
 "
 LOGFILE="
-    /tmp/arch-setup-log-file.txt
+    /tmp/arch-setup.txt
 "
 
 RED=$'\e[031m'
 CYAN=$'\e[036m'
 BOLD=$'\e[1m'
+STOPCOLOR=$'\e[0m'
+GREY=$'\e[38;5;7m'
 
 trim() {
     echo -e "${@}" | sed -e 's/^[[:space:]]*//' | awk 'NF' -
@@ -53,17 +71,23 @@ COLOR=()
 add-prefix() {
     STAGE+=("$1")
     COLOR+=("$2$3$4")
+    tell "START"
 }
 
 pop-prefix() {
+    tell "END"
     unset STAGE[-1]
     unset COLOR[-1]
 }
 
 tell() {
-    local STOPCOLOR=$'\e[030m\e[022m'
+    local PREFIX=""
+    for I in $(seq 0 $((${#COLOR[@]}-1)))
+    do
+        PREFIX="${PREFIX}${COLOR[$I]}:: ${STAGE[$I]}${STOPCOLOR} "
+    done
     trim "$@" \
-    | sed "s/^/${COLOR[-1]}[${STAGE[-1]}]${STOPCOLOR} /g" \
+    | sed "s/^/${PREFIX}:: /g" \
     | sed "s/\r/\n/g"
 }
 
@@ -73,7 +97,7 @@ hook() {
 }
 
 fail() {
-    add-prefix "ERROR" $RED $BOLD
+    add-prefix "ERROR" $RED
     tell "$@"
     for I in $(seq 1 ${#HOOK[@]})
     do
@@ -86,8 +110,8 @@ fail() {
 }
 
 # check if device exists
-disk-check() {
-    add-prefix 'CHECK DISK' $CYAN $BOLD
+setup-check() {
+    add-prefix 'CHECK DISK'
     local DEVLIST=$(find /dev | sed "s/^\/dev\///")
     local EXISTS=0
     for D in ${DEVLIST}
@@ -115,14 +139,14 @@ disk-check() {
 # partition disk
 # $1: device
 # $2: partition settings
-disk-partition() {
-    add-prefix 'PARTITION' $CYAN $BOLD
+setup-partition() {
+    add-prefix 'PARTITION'
     tell "
         Install parted using pacman. 
         -- Don't you worry. 
         -- This only happens in ram. 
     "
-    pacman -Sy --noconfirm parted >& $(trim $LOGFILE) || {
+    pacman -S --noconfirm parted >& $(trim $LOGFILE) || {
         fail "
             Cannot install 'parted'. Are you superuser?
             -- We need 'parted' to partition the disk!
@@ -135,27 +159,34 @@ disk-partition() {
             Reason: \"$(cat $(trim $LOGFILE))\"
         "
     }
-    local LINE=""
-    while read LINE
+    local CONF=""
+    readarray CONF < <(trim "$2")
+    for I in $(seq 0 $((${#CONF[@]} - 1)))
     do
-        local LINE=$(trim $(echo $LINE | awk '{split($0,a,"|"); print a[2]}'))
-        tell "Make partition with configuration: $LINE"
-        parted --script /dev/$(trim "$1") -- mkpart $LINE >& $(trim $LOGFILE) || {
+        local MKPT=$(trim $(echo ${CONF[$I]} | awk '{split($0,a,"|"); print a[2]}'))
+        local FLAG=$(trim $(echo ${CONF[$I]} | awk '{split($0,a,"|"); print a[3]}'))
+        tell "Make partition with configuration: $MKPT"
+        parted --script /dev/$(trim "$1") -- mkpart $MKPT >& $(trim $LOGFILE) || {
             fail "
                 Cannot partition the disk. are you superuser? what about alignment?
                 Reason: \"$(cat $(trim $LOGFILE))\"
             "
         }
-    done < <(trim "$2")
+        for F in $FLAG
+        do
+            tell "-- Attach flag $F"
+        parted --script /dev/$(trim "$1") -- set $(($I+1)) $F on >& $(trim $LOGFILE)
+        done || fail "Cannot set flag on partition $I $(echo)Reason: \"$(cat $(trim $LOGFILE))\""
+    done
     pop-prefix
 }
 
 # make file systems on disk
 # $1: device name
 # $2: partition settings
-disk-fs-format() {
-    add-prefix 'FS FORMAT' $CYAN $BOLD
-    # split lines to make arrays
+setup-fs-format() {
+    add-prefix 'FS FORMAT'
+    pacman -S --needed --noconfirm dosfstools
     local CONF
     local PARS
     readarray CONF < <(trim "$2")
@@ -167,7 +198,7 @@ disk-fs-format() {
     # file systems on partitions
     for I in $(seq 0 $((${#PARS[@]} - 1)))
     do
-        local MKF="$(trim $(echo ${CONF[$I]} | awk '{split($0,a,"|"); print a[3]}'))"
+        local MKF="$(trim $(echo ${CONF[$I]} | awk '{split($0,a,"|"); print a[4]}'))"
         local PAR=$(trim ${PARS[$I]})
         tell "Format file system $MKF $PAR. Wait..."
         $MKF $PAR >& /dev/null || {
@@ -181,8 +212,8 @@ disk-fs-format() {
 # $1: device name
 # $2: disk partition plan
 # $3: mount point root
-disk-mount() {
-    add-prefix "MOUNT DISK" $CYAN $BOLD
+setup-mount() {
+    add-prefix "MOUNT DISK"
     local CONF
     local PARS
     readarray CONF < <(trim "$2")
@@ -191,36 +222,28 @@ disk-mount() {
     then
         fail "The number of partitions is different from the number of configured partitions. "
     fi
+    swapoff -a -v
     for I in $(seq 0 $((${#PARS[@]} - 1)))
     do
         local POS="$(trim $3)$(trim $(echo ${CONF[$I]} | awk '{split($0,a,"|"); print a[1]}'))"
         local PAR=$(trim ${PARS[$I]})
         tell "$PAR <-> $POS"
         mount --mkdir $PAR $POS >& $(trim $LOGFILE) || {
-            fail "$(cat $(trim $LOGFILE))"
+            fail "Reason: \"$(cat $(trim $LOGFILE))\""
         }
         hook "umount -l $POS"
     done
+    tell "Generate fstab. "
+    mkdir $(trim "$MOUNTPOINT")/etc >& /dev/null || tell "/etc alread exists"
+    genfstab -U $(trim "$MOUNTPOINT") > $(trim "$MOUNTPOINT")/etc/fstab
+    cat /etc/pacman.conf > $(trim "$MOUNTPOINT")/etc/pacman.conf
     pop-prefix
 }
 
-# partition disk, encrypt disk, and install base system
-install-pre() {
-    pacman -Syy >& $(trim $LOGFILE) \
-    || fail "Cannot update pacman database. "
-    disk-check     "$DEVICE"
-    disk-partition "$DEVICE" "$PARTITION"
-    disk-fs-format "$DEVICE" "$PARTITION"
-    disk-mount     "$DEVICE" "$PARTITION" "$MOUNTPOINT"
-    pacstrap -K /mnt base base-devel linux linux-firmware sudo >& $(trim $LOGFILE) \
-    || fail "Cannot install base base-devel linux linux-firmware sudo"
-    genfstab -U $(trim $MOUNTPOINT) >> $(trim $MOUNTPOINT)/etc/fstab
-}
-
 # configure boot loading behaviour (systemd)
-conf-systemd-boot() {
+setup-systemd-boot() {
     # https://wiki.archlinux.org/title/Systemd-boot
-    bootctl install
+    bootctl install --path /boot
     # query fstab for root guid
     local UUID=$(cat /etc/fstab | awk '$2 == "/"' | awk $'{split($1,f,"=")\nprint f[2]}')
     local FSTY=$(cat /etc/fstab | awk '$2 == "/"' | awk $'{print $3}')
@@ -252,7 +275,7 @@ conf-systemd-boot() {
         linux   /vmlinuz-linux
         initrd  $UCOD
         initrd  /initramfs-linux.img
-        options root=PARTUUID=$UUID rw rootfstype=$FSTY
+        options root=UUID=$UUID rw rootfstype=$FSTY
     ")
     # configure boot loader option menu
     (cat - > /boot/loader/loader.conf) < <(trim "
@@ -262,26 +285,26 @@ conf-systemd-boot() {
 }
 
 # configure network
-conf-network() {
+# $1: hostname
+setup-network() {
     # hostname
-    (cat - > /etc/hostname) < <(trim "
-        $HOSTNAME
-    ")
-    # TODO: we will worry about this part later
+    (cat - > /etc/hostname) < <(trim "$1")
     (cat - > /etc/hosts) < <(trim "
         # IPv4 Hosts
         127.0.0.1    localhost
         ::1          localhost
-        127.0.1.1    $HOSTNAME
+        127.0.1.1    $1
         # IPv6 Hosts
-        ::1		localhost	ip6-localhost	ip6-loopback
-        ff02::1 	ip6-allnodes
-        ff02::2 	ip6-allrouters
+        ::1        localhost    ip6-localhost    ip6-loopback
+        ff02::1    ip6-allnodes
+        ff02::2    ip6-allrouters
     ")
 }
 
 # configure localization
-conf-localize() {
+# $1: region
+# $2: city
+setup-localize() {
     # locale setup
     locale-gen
     (cat - > /etc/locale.gen) < <(trim "
@@ -292,35 +315,68 @@ conf-localize() {
         LC_COLLATE="C"
     ')
     # timezone setup
-    ln -sT "/usr/share/zoneinfo/$(trim "$REGION")/$(trim "$CITY")" /etc/localtime
+    ln -sT "/usr/share/zoneinfo/$(trim "$1")/$(trim "$2")" /etc/localtime
     hwclock --systohc
 }
 
-# after base system setup, boot into archlinux, and run everything
-install-post() {
-    # install all listed packages
-    pacman -Sy --noconfirm $(trim "$PACKAGES")
-    conf-network
-    conf-localize
-    # user setup
-    passwd $USER < <(trim "
-        $PASSWORD
-        $PASSWORD
+# initialize a user and add it to sudoers
+# $1: username
+# $2: password
+setup-user() {
+    add-prefix "USER ADD"
+    useradd -m $(trim $1)
+    usermod -aG root $(trim $1)
+    passwd $(trim $1) < <(trim "
+        $(trim $2)
+        $(trim $2)
     ")
-    conf-systemd-boot
+    trim "
+        root ALL=(ALL:ALL) ALL
+        @includedir /etc/sudoers.d
+    "> /etc/sudoers
+    mkdir -p /etc/sudoers.d || tell "/etc/sudoers.d already exists"
+    echo "$(trim $1) ALL=(ALL) ALL" > /etc/sudoers.d/$(trim $1)
+    pop-prefix
 }
 
-if [[ "$1" == "install-post" ]]
+# use pacstrap to bootstrap a system
+# $1: the mountpoint to pacstrap into
+setup-pacstrap() {
+    tell "Install base system. "
+    pacstrap -K $(trim "$1") base base-devel \
+    || fail "
+        Cannot install base base-devel. 
+        Reason: \"$(cat $(trim $LOGFILE))\"
+    "
+}
+
+# setup pacman mirror and update database
+setup-pacman() {
+    trim "$1" > /etc/pacman.d/mirrorlist
+    pacman -Syy || fail "Cannot update pacman database. "
+}
+
+if [[ "$1" == "post" ]]
 then
-    add-prefix "POST-INSTALLATION" $CYAN $BOLD
-    install-post
+    add-prefix   "POST-INSTALL"
+    setup-pacman "$MIRRORLIST"
+    pacman --needed -S --noconfirm $(trim "$PACKAGES")
+    setup-network   "$HOSTNAME"
+    setup-localize  "$REGION"   "$CITY"
+    setup-user      "$USERNAME" "$PASSWORD"
+    setup-systemd-boot
     pop-prefix
 else
-    add-prefix "PRE-INSTALLATION" $CYAN $BOLD
-    install-pre
-    cp $0 "$(trim $MOUNTPOINT)/setup.sh" >& $(trim $LOGFILE) \
-    || fail "cannot copy current script to $(trim $MOUNTPOINT)/setup.sh"
-    arch-chroot "$(trim $MOUNTPOINT)" /setup.sh install-post \
-    || fail "chroot & execute failed $(trim $MOUNTPOINT)"
+    add-prefix      "INSTALL"
+    setup-pacman    "$MIRRORLIST"
+    setup-check     "$DEVICE"
+    setup-partition "$DEVICE" "$PARTITION"
+    setup-fs-format "$DEVICE" "$PARTITION"
+    setup-mount     "$DEVICE" "$PARTITION" "$MOUNTPOINT"
+    setup-pacstrap  "$MOUNTPOINT"
     pop-prefix
+    cp $0 "$(trim "$MOUNTPOINT")/setup.sh" >& $(trim $LOGFILE) \
+    || fail "cannot copy current script to $(trim "$MOUNTPOINT")/setup.sh"
+    arch-chroot "$(trim "$MOUNTPOINT")" bash /setup.sh post \
+    || fail "chroot & execute failed $(trim "$MOUNTPOINT")"
 fi
