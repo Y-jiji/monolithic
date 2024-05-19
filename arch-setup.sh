@@ -5,8 +5,8 @@ DEVICE="
 # TODO: disk encryption settings
 # mount position inside MOUNTPOINT | partition information | flags
 PARTITION="
-    /     | primary ext4  1GiB   100%  |     | mkfs.ext4 --verbose
-    /boot | primary fat32 1MiB   1GiB  | esp | mkfs.vfat -F32 --verbose
+    /     | primary ext4  1GiB   32GiB |     | mkfs.ext4 -v
+    /boot | primary fat32 1MiB   1GiB  | esp | mkfs.vfat -F32
 "
 MOUNTPOINT="
     /mnt/disk
@@ -16,6 +16,7 @@ MIRRORLIST='
     # Server = http://mirror.cs.vt.edu/archlinux/$repo/os/$arch
     # Server = http://www.gtlib.gatech.edu/pub/archlinux/$repo/os/$arch
     # CN
+    Server = https://mirrors.sjtug.sjtu.edu.cn/archlinux/$repo/os/$arch
     Server = http://mirrors.bfsu.edu.cn/archlinux/$repo/os/$arch
     # Server = http://mirrors.aliyun.com/archlinux/$repo/os/$arch
 '
@@ -28,6 +29,8 @@ PASSWORD="
 "
 PACKAGES="
     sudo
+    vim
+    git
     amd-ucode
     linux
     linux-firmware
@@ -78,6 +81,20 @@ pop-prefix() {
     tell "END"
     unset STAGE[-1]
     unset COLOR[-1]
+}
+
+with-retry() {
+    local COUNT=$1
+    shift
+    for I in $(seq 1 $COUNT)
+    do
+        $@
+        if [[ $? == 0 ]]; then break; fi
+        if [[ $I == $COUNT ]]
+        then
+            fail "Cannot finish command '$@' (retry $COUNT)"
+        fi
+    done
 }
 
 tell() {
@@ -201,7 +218,7 @@ setup-fs-format() {
         local MKF="$(trim $(echo ${CONF[$I]} | awk '{split($0,a,"|"); print a[4]}'))"
         local PAR=$(trim ${PARS[$I]})
         tell "Format file system $MKF $PAR. Wait..."
-        $MKF $PAR >& /dev/null || {
+        $MKF $PAR || {
             fail "Cannot make file system (with $MKF) on $PAR. "
         }
     done
@@ -236,7 +253,6 @@ setup-mount() {
     tell "Generate fstab. "
     mkdir $(trim "$MOUNTPOINT")/etc >& /dev/null || tell "/etc alread exists"
     genfstab -U $(trim "$MOUNTPOINT") > $(trim "$MOUNTPOINT")/etc/fstab
-    cat /etc/pacman.conf > $(trim "$MOUNTPOINT")/etc/pacman.conf
     pop-prefix
 }
 
@@ -342,24 +358,21 @@ setup-user() {
 # $1: the mountpoint to pacstrap into
 setup-pacstrap() {
     tell "Install base system. "
-    pacstrap -K $(trim "$1") base base-devel \
-    || fail "
-        Cannot install base base-devel. 
-        Reason: \"$(cat $(trim $LOGFILE))\"
-    "
+    with-retry 3 pacstrap -K $(trim "$1") base base-devel
+    cat /etc/pacman.conf > $(trim "$MOUNTPOINT")/etc/pacman.conf
 }
 
 # setup pacman mirror and update database
 setup-pacman() {
     trim "$1" > /etc/pacman.d/mirrorlist
-    pacman -Syy || fail "Cannot update pacman database. "
+    with-retry 3 pacman -Syy || fail "Cannot update pacman database. "
 }
 
-if [[ "$1" == "post" ]]
+if [[ "$1" == "post-install" ]]
 then
     add-prefix   "POST-INSTALL"
     setup-pacman "$MIRRORLIST"
-    pacman --needed -S --noconfirm $(trim "$PACKAGES")
+    with-retry 3 pacman --needed -S --noconfirm $(trim "$PACKAGES")
     setup-network   "$HOSTNAME"
     setup-localize  "$REGION"   "$CITY"
     setup-user      "$USERNAME" "$PASSWORD"
@@ -376,6 +389,6 @@ else
     pop-prefix
     cp $0 "$(trim "$MOUNTPOINT")/setup.sh" >& $(trim $LOGFILE) \
     || fail "cannot copy current script to $(trim "$MOUNTPOINT")/setup.sh"
-    arch-chroot "$(trim "$MOUNTPOINT")" bash /setup.sh post \
+    arch-chroot "$(trim "$MOUNTPOINT")" bash /setup.sh post-install \
     || fail "chroot & execute failed $(trim "$MOUNTPOINT")"
 fi
