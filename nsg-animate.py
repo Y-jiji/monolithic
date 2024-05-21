@@ -51,10 +51,10 @@ class Animator:
         frame = int(frame/self.interval)
         if frame % self.rate == 0:
             # extract the nodes
-            self.police_pos_last = self.police_pos
             self.evader_pos_last = self.evader_pos
-            self.police_pos = next(self.police_trace)
+            self.police_pos_last = self.police_pos
             self.evader_pos = next(self.evader_trace)
+            self.police_pos = next(self.police_trace)
         def pos_2d(pos_last, pos_curr):
             if len(pos_last) != len(pos_curr):
                 raise f"the number of units change! ({pos_last} v.s. {pos_curr})"
@@ -77,29 +77,29 @@ class Animator:
 
 if __name__ == '__main__':
     import random
-    # initial_pos = []
-    # generate a graph
+    # generate a graph with layout
+    initial_pos = []
     g = nx.Graph()
     for i in range(100):
         g.add_node(i)
-        # initial_pos.append((i%10/10, i//10/10))
+        initial_pos.append((i%10/10, i//10/10))
     # generate the graph by randomly adding edges (Erdos graph)
     for i in range(100):
         for j in range(100):
             if abs(i % 10 - j % 10) + abs(i//10 - j//10) == 1:
                 g.add_edge(i, j)
     # here for demonstrative purpose, we use random walk
-    p_ns = [random.randint(0, 99) for i in range(3)]
-    e_ns = [random.randint(0, 99) for i in range(3)]
+    p_ns = [[random.randint(0, 99) for i in range(3)]]
+    e_ns = [[random.randint(0, 99) for i in range(3)]]
     def random_walk(ns, stop):
         while True:
-            for i in range(len(ns)):
-                if stop(ns[i]) or ns[i] is None:
-                    ns[i] = None
-                    continue
-                ns[i] = random.choice(list(g.neighbors(ns[i])))
-            yield ns
+            ns[0] = [
+                random.choice(list(g.neighbors(l)))
+                if l is not None and not stop(l) else None
+                for l in ns[0]
+            ]
+            yield ns[0]
     ptrace = random_walk(p_ns, lambda _: False)
-    etrace = random_walk(e_ns, lambda e: e in p_ns)
-    animator = Animator(g, ptrace, etrace, interval=0.01, rate=120)
+    etrace = random_walk(e_ns, lambda e: e in p_ns[0])
+    animator = Animator(g, ptrace, etrace, interval=0.1, rate=120, initial_position=initial_pos)
     animator.animate(100)
