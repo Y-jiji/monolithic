@@ -5,7 +5,7 @@ DEVICE="
 # TODO: disk encryption settings
 # mount position inside MOUNTPOINT | partition information | flags
 PARTITION="
-    /     | primary ext4  1GiB   32GiB |     | mkfs.ext4 -v
+    /     | primary ext4  1GiB   100%  |     | mkfs.ext4 -v
     /boot | primary fat32 1MiB   1GiB  | esp | mkfs.vfat -F32
 "
 MOUNTPOINT="
@@ -30,15 +30,11 @@ PASSWORD="
 PACKAGES="
     sudo
     vim
-    git
     amd-ucode
     linux
     linux-firmware
     nvidia
-    nvidia-utils
     networkmanager
-    gnome
-    pipewire
     ttf-dejavu
     ttf-liberation
 "
@@ -74,11 +70,11 @@ COLOR=()
 add-prefix() {
     STAGE+=("$1")
     COLOR+=("$2$3$4")
-    tell "START"
+    tell "{START}"
 }
 
 pop-prefix() {
-    tell "END"
+    tell "{END}"
     unset STAGE[-1]
     unset COLOR[-1]
 }
@@ -245,10 +241,18 @@ setup-mount() {
         local POS="$(trim $3)$(trim $(echo ${CONF[$I]} | awk '{split($0,a,"|"); print a[1]}'))"
         local PAR=$(trim ${PARS[$I]})
         tell "$PAR <-> $POS"
-        mount --mkdir $PAR $POS >& $(trim $LOGFILE) || {
-            fail "Reason: \"$(cat $(trim $LOGFILE))\""
-        }
-        hook "umount -l $POS"
+        if [[ "$POS" == "swap" ]]
+        then
+            swapon $PAR >& $(trim $LOGFILE) || {
+                fail "Reason: \"$(cat $(trim $LOGFILE))\""
+            }
+            hook "swapoff $POS"
+        else
+            mount --mkdir $PAR $POS >& $(trim $LOGFILE) || {
+                fail "Reason: \"$(cat $(trim $LOGFILE))\""
+            }
+            hook "umount -l $POS"
+        fi
     done
     tell "Generate fstab. "
     mkdir $(trim "$MOUNTPOINT")/etc >& /dev/null || tell "/etc alread exists"
@@ -259,6 +263,7 @@ setup-mount() {
 # configure boot loading behaviour (systemd)
 setup-systemd-boot() {
     # https://wiki.archlinux.org/title/Systemd-boot
+    add-prefix 'SYSTEMD BOOT'
     bootctl install --path /boot
     # query fstab for root guid
     local UUID=$(cat /etc/fstab | awk '$2 == "/"' | awk $'{split($1,f,"=")\nprint f[2]}')
@@ -298,6 +303,7 @@ setup-systemd-boot() {
         timeout 5
         default arch
     ")
+    pop-prefix
 }
 
 # configure network
@@ -358,8 +364,8 @@ setup-user() {
 # $1: the mountpoint to pacstrap into
 setup-pacstrap() {
     tell "Install base system. "
-    with-retry 3 pacstrap -K $(trim "$1") base base-devel
     cat /etc/pacman.conf > $(trim "$MOUNTPOINT")/etc/pacman.conf
+    with-retry 3 pacstrap -K $(trim "$1") base base-devel
 }
 
 # setup pacman mirror and update database
@@ -372,6 +378,8 @@ if [[ "$1" == "post-install" ]]
 then
     add-prefix   "POST-INSTALL"
     setup-pacman "$MIRRORLIST"
+    with-retry 3 pacman-key --init
+    with-retry 3 pacman-key --populate
     with-retry 3 pacman --needed -S --noconfirm $(trim "$PACKAGES")
     setup-network   "$HOSTNAME"
     setup-localize  "$REGION"   "$CITY"
