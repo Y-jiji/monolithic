@@ -57,11 +57,10 @@ class Animator:
             self.evader_pos = next(self.evader_trace)
         def pos_2d(pos_last, pos_curr):
             if len(pos_last) != len(pos_curr):
-                raise f"the number of units change, if you want to remove one of them, use None! ({pos_last} v.s. {pos_curr})"
+                raise f"the number of units change! ({pos_last} v.s. {pos_curr})"
             for j in range(len(pos_last)):
-                if pos_curr[j] is None: continue
-                r = (frame%self.rate)/self.rate
-                yield tuple((1-r)*self.pos[pos_last[j]][i] + r*self.pos[pos_curr[j]][i] for i in range(2))
+                if pos_last[j] is None or pos_curr[j] is None: continue
+                yield tuple((1-frame%self.rate/self.rate)*self.pos[pos_last[j]][i] + frame%self.rate/self.rate*self.pos[pos_curr[j]][i] for i in range(2))
         # generate the positions of units
         police_pos_2d = list(pos_2d(self.police_pos_last, self.police_pos))
         evader_pos_2d = list(pos_2d(self.evader_pos_last, self.evader_pos))
@@ -78,16 +77,16 @@ class Animator:
 
 if __name__ == '__main__':
     import random
-    initial_pos = []
+    # initial_pos = []
     # generate a graph
     g = nx.Graph()
     for i in range(100):
         g.add_node(i)
-        initial_pos.append((i%10/10, i//10/10))
+        # initial_pos.append((i%10/10, i//10/10))
     # generate the graph by randomly adding edges (Erdos graph)
     for i in range(100):
         for j in range(100):
-            if abs(i % 10 - j % 10) + abs(i//10 - j//10) == 1 and i != j:
+            if abs(i % 10 - j % 10) + abs(i//10 - j//10) == 1:
                 g.add_edge(i, j)
     # here for demonstrative purpose, we use random walk
     p_ns = [random.randint(0, 99) for i in range(3)]
@@ -102,5 +101,5 @@ if __name__ == '__main__':
             yield ns
     ptrace = random_walk(p_ns, lambda _: False)
     etrace = random_walk(e_ns, lambda e: e in p_ns)
-    animator = Animator(g, ptrace, etrace, interval=0.01, rate=120, initial_position=initial_pos)
+    animator = Animator(g, ptrace, etrace, interval=0.01, rate=120)
     animator.animate(100)
