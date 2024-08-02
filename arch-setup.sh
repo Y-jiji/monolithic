@@ -1,61 +1,70 @@
-# the partitioned device
-DEVICE="
-    sda
-"
-# TODO: disk encryption settings
-# mount position inside MOUNTPOINT | partition information | flags
-PARTITION="
-    /     | primary ext4  1GiB   100%  |     | mkfs.ext4 -v
-    /boot | primary fat32 1MiB   1GiB  | esp | mkfs.vfat -F32
-"
-MOUNTPOINT="
-    /mnt/disk
-"
-MIRRORLIST='
-    # US
-    # Server = http://mirror.cs.vt.edu/archlinux/$repo/os/$arch
-    # Server = http://www.gtlib.gatech.edu/pub/archlinux/$repo/os/$arch
-    # CN
-    Server = https://mirrors.sjtug.sjtu.edu.cn/archlinux/$repo/os/$arch
-    Server = http://mirrors.bfsu.edu.cn/archlinux/$repo/os/$arch
-    # Server = http://mirrors.aliyun.com/archlinux/$repo/os/$arch
-'
-# don't forget to change this to yours!
-USERNAME="
-    y-jiji
-"
-PASSWORD="
-    awesome-archlinux
-"
-PACKAGES="
-    sudo
-    vim
-    amd-ucode
-    linux
-    linux-firmware
-    nvidia
-    networkmanager
-    ttf-dejavu
-    ttf-liberation
-"
-HOSTNAME="
-    arch
-"
-REGION="
-    Asia
-"
-CITY="
-    Shanghai
-"
-LOGFILE="
-    /tmp/arch-setup.txt
-"
+############################
+#                          #
+#      Configuration       #
+#                          #
+############################
+
+# the disk to setup your system
+DEVICE=      'sda'
+# your region information
+REGION=      'Asia'
+# your city
+CITY=        'Shanghai'
+# log file for temporary outputs
+LOGFILE=     '/tmp/arch-setup.txt'
+# the mounting point for your root partition
+MOUNTPOINT=  '/mnt/disk'
+# just the user name
+USERNAME=    'y-jiji'
+# your password, change it to yours (and i don't use this one for any of my machines)
+PASSWORD=    'awesome-archlinux'
+# host name, your shell prompt will look like user@hostname when you login
+HOSTNAME=    'arch'
+# disk partitions, currently there is a root partition and a boot partition
+PARTITION=   '
+             /     | primary ext4  1GiB   100%  |     | mkfs.ext4 -v
+             /boot | primary fat32 1MiB   1GiB  | esp | mkfs.vfat -F32
+             '
+# pacman mirrorlist, packages will be downloaded from the following servers. 
+MIRRORLIST=  '
+             # US
+             # Server = http://mirror.cs.vt.edu/archlinux/$repo/os/$arch
+             # Server = http://www.gtlib.gatech.edu/pub/archlinux/$repo/os/$arch
+             # CN
+             # Server = https://mirrors.sjtug.sjtu.edu.cn/archlinux/$repo/os/$arch
+             # Server = http://mirrors.bfsu.edu.cn/archlinux/$repo/os/$arch
+             # Server = http://mirrors.aliyun.com/archlinux/$repo/os/$arch
+             '
+# pacman package list, the following packages will be installed by default 
+PACKAGES=    '
+             sudo       vim            git            code
+             amd-ucode  linux          linux-firmware nvidia
+             gnome      networkmanager
+             ttf-dejavu ttf-liberation
+             '
+# hosts, namely how host names are mapped to ip-addresses
+HOSTS=       '
+             # IPv4 Hosts
+             127.0.0.1    localhost
+             ::1          localhost
+             127.0.1.1    $1
+             # IPv6 Hosts
+             ::1        localhost    ip6-localhost    ip6-loopback
+             ff02::1    ip6-allnodes
+             ff02::2    ip6-allrouters
+             '
+
+##########################
+#                        #
+#      Logger Setup      #
+#                        #
+##########################
 
 RED=$'\e[031m'
 CYAN=$'\e[036m'
 BOLD=$'\e[1m'
-STOPCOLOR=$'\e[0m'
 GREY=$'\e[38;5;7m'
+STOPCOLOR=$'\e[0m'
 
 trim() {
     echo -e "${@}" | sed -e 's/^[[:space:]]*//' | awk 'NF' -
@@ -104,26 +113,39 @@ tell() {
     | sed "s/\r/\n/g"
 }
 
-HOOK=()
+##############################
+#                            #
+#       Cleanup Hooks        #
+#                            #
+##############################
+
+FAILHOOKS=()
 hook() {
-    HOOK+=("$@")
+    FAILHOOKS+=("$@")
 }
 
 fail() {
     add-prefix "ERROR" $RED
     tell "$@"
-    for I in $(seq 1 ${#HOOK[@]})
+    for I in $(seq 1 ${#FAILHOOKS[@]})
     do
-        tell ${HOOK[-$I]}
-        ${HOOK[-$I]} >& /dev/null || {
-            tell "While executing cleanup hook, '${HOOK[-$I]}' failed. "
+        tell ${FAILHOOKS[-$I]}
+        ${FAILHOOKS[-$I]} >& /dev/null || {
+            tell "While executing cleanup hook, '${FAILHOOKS[-$I]}' failed. "
         }
     done
     exit 1
 }
 
+########################################
+#                                      #
+#   Pre-installation Tool functions    #
+#                                      #
+########################################
+
 # check if device exists
-setup-check() {
+# $1: the device to check
+setup-disk-check() {
     add-prefix 'CHECK DISK'
     local DEVLIST=$(find /dev | sed "s/^\/dev\///")
     local EXISTS=0
@@ -260,6 +282,20 @@ setup-mount() {
     pop-prefix
 }
 
+# use pacstrap to bootstrap a system
+# $1: the mountpoint to pacstrap into
+setup-pacstrap() {
+    tell "Install base system. "
+    cat /etc/pacman.conf > $(trim "$1")/etc/pacman.conf
+    with-retry 3 pacstrap -K $(trim "$1") base base-devel
+}
+
+########################################
+#                                      #
+#   Post-installation Tool Functions   #
+#                                      #
+########################################
+
 # configure boot loading behaviour (systemd)
 setup-systemd-boot() {
     # https://wiki.archlinux.org/title/Systemd-boot
@@ -308,19 +344,11 @@ setup-systemd-boot() {
 
 # configure network
 # $1: hostname
+# $2: hosts
 setup-network() {
     # hostname
     (cat - > /etc/hostname) < <(trim "$1")
-    (cat - > /etc/hosts) < <(trim "
-        # IPv4 Hosts
-        127.0.0.1    localhost
-        ::1          localhost
-        127.0.1.1    $1
-        # IPv6 Hosts
-        ::1        localhost    ip6-localhost    ip6-loopback
-        ff02::1    ip6-allnodes
-        ff02::2    ip6-allrouters
-    ")
+    (cat - > /etc/hosts)    < <(trim "$2")
 }
 
 # configure localization
@@ -332,7 +360,7 @@ setup-localize() {
     (cat - > /etc/locale.gen) < <(trim "
         en_US.UTF-8 UTF-8
     ")
-    (cat -> /etc/locale.conf) < <(trim '
+    (cat - > /etc/locale.conf) < <(trim '
         LANG="en_US.UTF-8"
         LC_COLLATE="C"
     ')
@@ -351,52 +379,52 @@ setup-user() {
         $(trim $2)
         $(trim $2)
     ")
-    trim "
+    (cat - > /etc/sudoers) < <(trim '
         root ALL=(ALL:ALL) ALL
         @includedir /etc/sudoers.d
-    "> /etc/sudoers
+    ')
     mkdir -p /etc/sudoers.d || tell "/etc/sudoers.d already exists"
     echo "$(trim $1) ALL=(ALL) ALL" > /etc/sudoers.d/$(trim $1)
     pop-prefix
 }
 
-# use pacstrap to bootstrap a system
-# $1: the mountpoint to pacstrap into
-setup-pacstrap() {
-    tell "Install base system. "
-    cat /etc/pacman.conf > $(trim "$MOUNTPOINT")/etc/pacman.conf
-    with-retry 3 pacstrap -K $(trim "$1") base base-devel
-}
-
 # setup pacman mirror and update database
+# $1: the mirrorlist file
 setup-pacman() {
     trim "$1" > /etc/pacman.d/mirrorlist
     with-retry 3 pacman -Syy || fail "Cannot update pacman database. "
+    with-retry 3 pacman-key --init
+    with-retry 3 pacman-key --populate
+    with-retry 3 pacman     --needed -S --noconfirm $(trim "$2")
 }
+
+###########################
+#                         #
+#   Program Entry Point   #
+#                         #
+###########################
 
 if [[ "$1" == "post-install" ]]
 then
-    add-prefix   "POST-INSTALL"
-    setup-pacman "$MIRRORLIST"
-    with-retry 3 pacman-key --init
-    with-retry 3 pacman-key --populate
-    with-retry 3 pacman --needed -S --noconfirm $(trim "$PACKAGES")
-    setup-network   "$HOSTNAME"
-    setup-localize  "$REGION"   "$CITY"
-    setup-user      "$USERNAME" "$PASSWORD"
+    add-prefix          "POST-INSTALL"
+    setup-pacman        "$MIRRORLIST"    "$PACKAGES"
+    setup-network       "$HOSTNAME"      "$HOSTS"
+    setup-localize      "$REGION"        "$CITY"
+    setup-user          "$USERNAME"      "$PASSWORD"
     setup-systemd-boot
     pop-prefix
 else
-    add-prefix      "INSTALL"
-    setup-pacman    "$MIRRORLIST"
-    setup-check     "$DEVICE"
-    setup-partition "$DEVICE" "$PARTITION"
-    setup-fs-format "$DEVICE" "$PARTITION"
-    setup-mount     "$DEVICE" "$PARTITION" "$MOUNTPOINT"
-    setup-pacstrap  "$MOUNTPOINT"
+    add-prefix          "PRE-INSTALL" 
+    trim                "$MIRRORLIST" > /etc/pacman.d/mirrorlist
+    setup-disk-check    "$DEVICE"        
+    setup-partition     "$DEVICE"     "$PARTITION" 
+    setup-fs-format     "$DEVICE"     "$PARTITION" 
+    setup-mount         "$DEVICE"     "$PARTITION" "$MOUNTPOINT"
+    setup-pacstrap      "$MOUNTPOINT"
     pop-prefix
     cp $0 "$(trim "$MOUNTPOINT")/setup.sh" >& $(trim $LOGFILE) \
     || fail "cannot copy current script to $(trim "$MOUNTPOINT")/setup.sh"
     arch-chroot "$(trim "$MOUNTPOINT")" bash /setup.sh post-install \
     || fail "chroot & execute failed $(trim "$MOUNTPOINT")"
+    rm "$(trim "$MOUNTPOINT")/setup.sh"
 fi

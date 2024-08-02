@@ -19,6 +19,7 @@ class Animator:
         self.pos = self.layout(initial_position)
         dx = max(x for x, y in self.pos) - min(x for x, y in self.pos)
         dy = max(y for x, y in self.pos) - min(y for x, y in self.pos)
+        # set the painting space with padding
         self.ax.set_xlim((-dx*0.1+min(x for x, y in self.pos), max(x for x, y in self.pos)+dx*0.1))
         self.ax.set_ylim((-dy*0.1+min(y for x, y in self.pos), max(y for x, y in self.pos)+dy*0.1))
         # last positions, initialized as none
