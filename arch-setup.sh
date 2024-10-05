@@ -5,45 +5,45 @@
 ############################
 
 # the disk to setup your system
-DEVICE=      'sda'
+DEVICE='sda'
 # your region information
-REGION=      'Asia'
+REGION='Asia'
 # your city
-CITY=        'Shanghai'
+CITY='Shanghai'
 # log file for temporary outputs
-LOGFILE=     '/tmp/arch-setup.txt'
+LOGFILE='/tmp/arch-setup.txt'
 # the mounting point for your root partition
-MOUNTPOINT=  '/mnt/disk'
+MOUNTPOINT='/mnt/disk'
 # just the user name
-USERNAME=    'y-jiji'
+USERNAME='y-jiji'
 # your password, change it to yours (and i don't use this one for any of my machines)
-PASSWORD=    'awesome-archlinux'
+PASSWORD='awesome-archlinux'
 # host name, your shell prompt will look like user@hostname when you login
-HOSTNAME=    'arch'
+HOSTNAME='arch'
 # disk partitions, currently there is a root partition and a boot partition
-PARTITION=   '
+PARTITION='
              /     | primary ext4  1GiB   100%  |     | mkfs.ext4 -v
              /boot | primary fat32 1MiB   1GiB  | esp | mkfs.vfat -F32
              '
 # pacman mirrorlist, packages will be downloaded from the following servers. 
-MIRRORLIST=  '
+MIRRORLIST='
              # US
-             # Server = http://mirror.cs.vt.edu/archlinux/$repo/os/$arch
-             # Server = http://www.gtlib.gatech.edu/pub/archlinux/$repo/os/$arch
+             # Server =http://mirror.cs.vt.edu/archlinux/$repo/os/$arch
+             # Server =http://www.gtlib.gatech.edu/pub/archlinux/$repo/os/$arch
              # CN
-             # Server = https://mirrors.sjtug.sjtu.edu.cn/archlinux/$repo/os/$arch
-             # Server = http://mirrors.bfsu.edu.cn/archlinux/$repo/os/$arch
-             # Server = http://mirrors.aliyun.com/archlinux/$repo/os/$arch
+             # Server =https://mirrors.sjtug.sjtu.edu.cn/archlinux/$repo/os/$arch
+             # Server =http://mirrors.bfsu.edu.cn/archlinux/$repo/os/$arch
+             # Server =http://mirrors.aliyun.com/archlinux/$repo/os/$arch
              '
 # pacman package list, the following packages will be installed by default 
-PACKAGES=    '
+PACKAGES='
              sudo       vim            git            code
              amd-ucode  linux          linux-firmware nvidia
              gnome      networkmanager
              ttf-dejavu ttf-liberation
              '
 # hosts, namely how host names are mapped to ip-addresses
-HOSTS=       '
+HOSTS='
              # IPv4 Hosts
              127.0.0.1    localhost
              ::1          localhost
@@ -94,8 +94,8 @@ with-retry() {
     for I in $(seq 1 $COUNT)
     do
         $@
-        if [[ $? == 0 ]]; then break; fi
-        if [[ $I == $COUNT ]]
+        if [[ $? ==0 ]]; then break; fi
+        if [[ $I ==$COUNT ]]
         then
             fail "Cannot finish command '$@' (retry $COUNT)"
         fi
@@ -151,12 +151,12 @@ setup-disk-check() {
     local EXISTS=0
     for D in ${DEVLIST}
     do
-        if [[ $(trim $1) == $D ]]
+        if [[ $(trim $1) ==$D ]]
         then
             EXISTS=1
         fi
     done
-    if [[ $EXISTS == 0 ]]
+    if [[ $EXISTS ==0 ]]
     then
         fail "
             Device [$(trim $1)] doesn't exist!
@@ -226,7 +226,7 @@ setup-fs-format() {
     local PARS
     readarray CONF < <(trim "$2")
     readarray PARS < <(find /dev | grep -P "/dev/$(trim $1).+")
-    if [[ ${#CONF[@]} != ${#PARS[@]} ]]
+    if [[ ${#CONF[@]} !=${#PARS[@]} ]]
     then
         fail "The number of partitions is different from the number of configured partitions. "
     fi
@@ -253,7 +253,7 @@ setup-mount() {
     local PARS
     readarray CONF < <(trim "$2")
     readarray PARS < <(find /dev | grep -P "/dev/$(trim $1).+")
-    if [[ ${#CONF[@]} != ${#PARS[@]} ]]
+    if [[ ${#CONF[@]} !=${#PARS[@]} ]]
     then
         fail "The number of partitions is different from the number of configured partitions. "
     fi
@@ -263,7 +263,7 @@ setup-mount() {
         local POS="$(trim $3)$(trim $(echo ${CONF[$I]} | awk '{split($0,a,"|"); print a[1]}'))"
         local PAR=$(trim ${PARS[$I]})
         tell "$PAR <-> $POS"
-        if [[ "$POS" == "swap" ]]
+        if [[ "$POS" =="swap" ]]
         then
             swapon $PAR >& $(trim $LOGFILE) || {
                 fail "Reason: \"$(cat $(trim $LOGFILE))\""
@@ -302,8 +302,8 @@ setup-systemd-boot() {
     add-prefix 'SYSTEMD BOOT'
     bootctl install --path /boot
     # query fstab for root guid
-    local UUID=$(cat /etc/fstab | awk '$2 == "/"' | awk $'{split($1,f,"=")\nprint f[2]}')
-    local FSTY=$(cat /etc/fstab | awk '$2 == "/"' | awk $'{print $3}')
+    local UUID=$(cat /etc/fstab | awk '$2 =="/"' | awk $'{split($1,f,"=")\nprint f[2]}')
+    local FSTY=$(cat /etc/fstab | awk '$2 =="/"' | awk $'{print $3}')
     # detect microcode image (https://wiki.archlinux.org/title/Microcode)
     if   [[ -f /boot/amd-ucode.img ]]; then
         local UCOD='/amd-ucode.img'
@@ -404,7 +404,7 @@ setup-pacman() {
 #                         #
 ###########################
 
-if [[ "$1" == "post-install" ]]
+if [[ "$1" =="post-install" ]]
 then
     add-prefix          "POST-INSTALL"
     setup-pacman        "$MIRRORLIST"    "$PACKAGES"
