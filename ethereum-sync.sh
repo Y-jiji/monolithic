@@ -1,5 +1,5 @@
 # to peek running logs: tail -f <file name>
-MYPATH=/media/gtnetuser/SSD_2TB_BEST/ethereum
+MYPATH=/media/gtnetuser/HDD_16TB_ATLAS/ethereum
 
 # setup working dir
 mkdir -p ${MYPATH}
@@ -17,8 +17,6 @@ curl https://raw.githubusercontent.com/prysmaticlabs/prysm/master/prysm.sh --out
 rm -rf ethersync-client.log
 rm -rf ethersync-beacon.log
 rm -rf data
-mkdir -p ${MYPATH}/data/geth
-mkdir -p ${MYPATH}/data/beacon
 
 # create jwt secret
 echo "2b4956f3c2dc15052da675bb58082b07698952bf3130ba99ad9c1fe2ca257e10" \
@@ -26,22 +24,22 @@ echo "2b4956f3c2dc15052da675bb58082b07698952bf3130ba99ad9c1fe2ca257e10" \
 
 # run geth process
 nohup geth --mainnet \
-	--syncmode snap \
-	--gcmode archive \
-	--datadir ${MYPATH}/data/geth \
-	--http --authrpc.addr localhost \
-	--state.scheme="hash" \
-	--authrpc.vhosts=localhost \
-	--authrpc.port 8551 \
-	--authrpc.jwtsecret=${MYPATH}/jwtsecret \
-	>> ethersync-client.log &
+    --syncmode full \
+    --gcmode archive \
+    --datadir ${MYPATH}/data \
+    --http --authrpc.addr localhost \
+    --state.scheme="hash" \
+    --authrpc.vhosts=localhost \
+    --authrpc.port 8551 \
+    --authrpc.jwtsecret=${MYPATH}/jwtsecret \
+    >> ethersync-client.log &
 
 # run prysm process
 nohup ./prysm.sh beacon-chain \
     --mainnet \
-    --datadir ${MYPATH}/data/beacon \
+    --datadir ${MYPATH}/data \
     --checkpoint-sync-url=https://beaconstate.info \
-    --execution-endpoint=http://localhost:8551  \
+    --execution-endpoint=http://localhost:8551 \
     --jwt-secret=${MYPATH}/jwtsecret \
     --accept-terms-of-use \
     >> ethersync-beacon.log &
