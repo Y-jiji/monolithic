@@ -4,7 +4,7 @@ import copy
 import random
 
 S = 10000   # dataset size
-D = 64      # the dimensions
+D = 256     # the dimensions
 C = 0.5     # hilbert curve factor
 H = 256     # number of hash functions
 L = 40      # hilbert layers
@@ -38,9 +38,10 @@ def hilbert(x: np.ndarray):
         p = rng.permutation(D)
         o = ((d - z) * m[p]).sum(-1) * (C ** (i * D)) + o
         p = rng.permutation(D)
-        d = z ^ d
+        d = z
     return o
 
+# the key by projection
 def project(x: np.ndarray):
     w = rng.standard_normal(size=(D))
     return x @ w
